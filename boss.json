@@ -6,6 +6,6 @@
 	"mainsrc": "src",
 	"projects": [],
 	"dependencies": {
-		"github.com/gusscloud/dataset-serialize": "^v2.2.9"
+		"https://github.com/gusscloud/dataset-serialize": "^v2.2.9"
 	}
 }
