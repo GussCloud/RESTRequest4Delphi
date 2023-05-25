@@ -6,6 +6,9 @@ uses RESTRequest4D.Response.Contract,
   {$IF NOT (DEFINED(RR4D_INDY) or DEFINED(FPC) or DEFINED(RR4D_NETHTTP))}
     REST.Types,
   {$ENDIF}
+  {$IFDEF RR4D_INDY}
+    IdHTTP,
+  {$ENDIF}
   {$IFDEF FPC}
     SysUtils, fpjson, Classes, DB;
   {$ELSE}
@@ -21,6 +24,10 @@ type
     function AcceptCharset(const AAcceptCharset: string): IRequest; overload;
     function Accept: string; overload;
     function Accept(const AAccept: string): IRequest; overload;
+	{$IF DEFINED(RR4D_SYNAPSE)}
+    function MimeType: string; overload;
+    function MimeType(const AMimeType: string): IRequest; overload;
+	{$ENDIF}
     function Timeout: Integer; overload;
     function Timeout(const ATimeout: Integer): IRequest; overload;
     function DataSetAdapter(const ADataSet: TDataSet): IRequest; overload;
@@ -47,7 +54,7 @@ type
     {$IF DEFINED(RR4D_NETHTTP)}
     function Asynchronous(const AValue: Boolean): IRequest;
     {$ENDIF}
-    {$IF DEFINED(RR4D_INDY) or DEFINED(FPC) or DEFINED(RR4D_NETHTTP)}
+    {$IF DEFINED(RR4D_INDY) or DEFINED(FPC) or DEFINED(RR4D_SYNAPSE) or DEFINED(RR4D_NETHTTP)}
     function AddParam(const AName, AValue: string): IRequest;
     function AddBody(const AContent: string): IRequest; overload;
     function AddHeader(const AName, AValue: string): IRequest;
@@ -69,9 +76,21 @@ type
     function ContentType(const AContentType: string): IRequest;
     function AddCookies(const ACookies: TStrings): IRequest;
     function AddCookie(const ACookieName, ACookieValue: string): IRequest;
-    function AddFile(const AName: string; const AValue: TStream): IRequest;
+    function AddField(const AFieldName: string; const AValue: string): IRequest; overload;
+    {$IF DEFINED(RR4D_INDY) or DEFINED(FPC) or DEFINED(RR4D_SYNAPSE) or DEFINED(RR4D_NETHTTP)}
+    function AddFile(const AFieldName: string; const AFileName: string; const AContentType: string = ''): IRequest; overload;
+    function AddFile(const AFieldName: string; const AValue: TStream; const AFileName: string = ''; const AContentType: string = ''): IRequest; overload;
+    {$ELSE}
+    function AddFile(const AFieldName: string; const AFileName: string; const AContentType: TRESTContentType = TRESTContentType.ctNone): IRequest; overload;
+    function AddFile(const AFieldName: string; const AValue: TStream; const AFileName: string = ''; const AContentType: TRESTContentType = TRESTContentType.ctNone): IRequest; overload;
+    {$ENDIF}
     function Proxy(const AServer, APassword, AUsername: string; const APort: Integer): IRequest;
     function DeactivateProxy: IRequest;
+    {$IF DEFINED(RR4D_INDY)}
+    function CertFile(const APath: string): IRequest;
+    function KeyFile(const APath: string): IRequest;
+    function HTTPOptions(const AHTTPOptions: TIdHTTPOptions): IRequest;
+    {$ENDIF}
   end;
 
 implementation

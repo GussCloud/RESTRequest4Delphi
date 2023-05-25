@@ -30,12 +30,13 @@ type
     function StatusCode: Integer;
     function StatusText: string;
     function RawBytes: TBytes;
+    function Headers: TStrings;
+    function GetCookie(const ACookieName: string): string;
   {$IFDEF FPC}
     function JSONValue: TJSONData;
   {$ELSE}
     function JSONValue: TJSONValue;
   {$ENDIF}
-    function Headers: TStrings;
   public
     constructor Create(const AIdHTTP: TIdHTTP);
     destructor Destroy; override;
@@ -47,7 +48,7 @@ implementation
 function TResponseIndy.JSONValue: TJSONData;
 var
   LContent: string;
-  LJSONParser : TJSONParser;
+  LJSONParser: TJSONParser;
 begin
   if not(Assigned(FJSONValue)) then
   begin
@@ -66,7 +67,9 @@ begin
   end;
   Result := FJSONValue;
 end;
+
 {$ELSE}
+
 function TResponseIndy.JSONValue: TJSONValue;
 var
   LContent: string;
@@ -135,6 +138,17 @@ begin
   if Assigned(FJSONValue) then
     FJSONValue.Free;
   inherited;
+end;
+
+function TResponseIndy.GetCookie(const ACookieName: string): string;
+var
+  I: Integer;
+begin
+  for I := 0 to Pred(FIdHTTP.CookieManager.CookieCollection.Count) do
+  begin
+    if Trim(LowerCase(FIdHTTP.CookieManager.CookieCollection.Cookies[I].CookieName)) = Trim(LowerCase(ACookieName)) then
+      Result := FIdHTTP.CookieManager.CookieCollection.Cookies[I].CookieText;
+  end;
 end;
 
 function TResponseIndy.StatusCode: Integer;

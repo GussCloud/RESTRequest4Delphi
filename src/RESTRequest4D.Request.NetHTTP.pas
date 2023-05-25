@@ -9,6 +9,8 @@ uses System.Net.Mime, System.Net.HttpClientComponent, System.Net.HttpClient, RES
 type
   TRequestNetHTTP = class(TInterfacedObject, IRequest)
   private
+    FUseMultipartFormData: Boolean;
+    FMultipartFormData: TMultipartFormData;
     FParams: TStrings;
     FUrlSegments: TStrings;
     FNetHTTPClient: TNetHTTPClient;
@@ -64,7 +66,9 @@ type
     function AddCookies(const ACookies: TStrings): IRequest;
     function AddCookie(const ACookieName, ACookieValue: string): IRequest;
     function AddParam(const AName, AValue: string): IRequest;
-    function AddFile(const AName: string; const AValue: TStream): IRequest;
+    function AddField(const AFieldName: string; const AValue: string): IRequest; overload;
+    function AddFile(const AFieldName: string; const AFileName: string; const AContentType: string = ''): IRequest; overload;
+    function AddFile(const AFieldName: string; const AValue: TStream; const AFileName: string = ''; const AContentType: string = ''): IRequest; overload;
     function Asynchronous(const AValue: Boolean): IRequest;
     function MakeURL(const AIncludeParams: Boolean = True): string;
     function Proxy(const AServer, APassword, AUsername: string; const APort: Integer): IRequest;
@@ -214,13 +218,51 @@ var
   cookies: TStringList;
 begin
   cookies := TStringList.Create;
-  cookies.AddPair(ACookieName, ACookieValue);
-  Result := AddCookies(cookies);
+  try
+    cookies.AddPair(ACookieName, ACookieValue);
+    Result := AddCookies(cookies);
+  finally
+    cookies.Free;
+  end;
 end;
 
-function TRequestNetHTTP.AddFile(const AName: string; const AValue: TStream): IRequest;
+function TRequestNetHTTP.AddField(const AFieldName: string; const AValue: string): IRequest;
 begin
-  raise Exception.Create('Not implemented');
+  Result := Self;
+  FMultipartFormData.AddField(AFieldName, AValue);
+  FUseMultipartFormData := True;
+end;
+
+function TRequestNetHTTP.AddFile(const AFieldName: string; const AFileName: string; const AContentType: string): IRequest;
+begin
+  Result := Self;
+  if not FileExists(AFileName) then
+    Exit;
+  {$IF COMPILERVERSION >= 33.0}
+    FMultipartFormData.AddFile(AFieldName, AFileName, AContentType);
+  {$ELSE}
+    FMultipartFormData.AddFile(AFieldName, AFileName);
+  {$ENDIF}
+  FUseMultipartFormData := True;
+end;
+
+function TRequestNetHTTP.AddFile(const AFieldName: string; const AValue: TStream; const AFileName: string; const AContentType: string): IRequest;
+{$IF COMPILERVERSION >= 33.0}
+var
+  lFileName: string;
+{$ENDIF}
+begin
+  Result := Self;
+  if not Assigned(AValue) then
+    Exit;
+  {$IF COMPILERVERSION >= 33.0}
+    lFileName := Trim(AFileName);
+    if (lFileName = EmptyStr) then
+      lFileName := AFieldName;
+    AValue.Position := 0;
+    FMultipartFormData.AddStream(AFieldName, AValue, lFileName, AContentType);
+    FUseMultipartFormData := True;
+  {$ENDIF}
 end;
 
 function TRequestNetHTTP.AddHeader(const AName, AValue: string): IRequest;
@@ -228,11 +270,11 @@ begin
   Result := Self;
   if AName.Trim.IsEmpty or AValue.Trim.IsEmpty then
     Exit;
-{$IF COMPILERVERSION >= 34}
-  FNetHTTPClient.CustHeaders.Add(AName, AValue);
-{$ELSE}
-  {TODO -oAll -cCustoms Headers : Add headers with NetHTTPClient in versions below of 10.4 Sydney}
-{$ENDIF}
+  {$IF COMPILERVERSION >= 34}
+    FNetHTTPClient.CustHeaders.Add(AName, AValue);
+  {$ELSE}
+    {TODO -oAll -cCustoms Headers : Add headers with NetHTTPClient in versions below of 10.4 Sydney}
+  {$ENDIF}
 end;
 
 function TRequestNetHTTP.AddParam(const AName, AValue: string): IRequest;
@@ -293,12 +335,12 @@ var
 {$ENDIF}
 begin
   Result := Self;
-{$IF COMPILERVERSION >= 34}
-  for I := 0 to Pred(FNetHTTPClient.CustHeaders.Count) do
-    FNetHTTPClient.CustHeaders.Delete(I);
-{$ELSE}
-  {TODO -oAll -cCustom Headers : Clear headers with NetHTTPClient in versions below of 10.4 Sydney}
-{$ENDIF}
+  {$IF COMPILERVERSION >= 34}
+    for I := 0 to Pred(FNetHTTPClient.CustHeaders.Count) do
+      FNetHTTPClient.CustHeaders.Delete(I);
+  {$ELSE}
+    {TODO -oAll -cCustom Headers : Clear headers with NetHTTPClient in versions below of 10.4 Sydney}
+  {$ENDIF}
 end;
 
 function TRequestNetHTTP.ClearParams: IRequest;
@@ -336,6 +378,9 @@ begin
   FStreamResult := TStringStream.Create;
   Self.ContentType('application/json');
   FRetries := 0;
+
+  FMultipartFormData := TMultipartFormData.Create;
+  FUseMultipartFormData := False;
 end;
 
 function TRequestNetHTTP.DataSetAdapter: TDataSet;
@@ -374,6 +419,8 @@ begin
     FStreamSend.Free;
   if Assigned(FStreamResult) then
     FStreamResult.Free;
+  if Assigned(FMultipartFormData) then
+    FMultipartFormData.Free;
   inherited;
 end;
 
@@ -408,9 +455,29 @@ begin
         mrGET:
           Result := FNetHTTPClient.Get(TIdURI.URLEncode(MakeURL), FStreamResult);
         mrPOST:
-          Result := FNetHTTPClient.Post(TIdURI.URLEncode(MakeURL), FStreamSend, FStreamResult);
+        begin
+          if (Assigned(FMultipartFormData.Stream) and (FUseMultipartFormData = True)) then
+          begin
+            FNetHTTPClient.ContentType := EmptyStr;
+            FUseMultipartFormData := False;
+            Result := FNetHTTPClient.Post(TIdURI.URLEncode(MakeURL), FMultipartFormData, FStreamResult);
+          end
+          else
+            Result := FNetHTTPClient.Post(TIdURI.URLEncode(MakeURL), FStreamSend, FStreamResult);
+        end;
         mrPUT:
-          Result := FNetHTTPClient.Put(TIdURI.URLEncode(MakeURL), FStreamSend, FStreamResult);
+        begin
+          if (Assigned(FMultipartFormData.Stream) and (FUseMultipartFormData = True)) then
+          begin
+            FNetHTTPClient.ContentType := EmptyStr;
+            FUseMultipartFormData := False;
+            {$IF COMPILERVERSION >= 33.0}
+              Result := FNetHTTPClient.Put(TIdURI.URLEncode(MakeURL), FMultipartFormData, FStreamResult);
+            {$ENDIF}
+          end
+          else
+            Result := FNetHTTPClient.Put(TIdURI.URLEncode(MakeURL), FStreamSend, FStreamResult);
+        end;
         mrPATCH:
           Result := FNetHTTPClient.Patch(TIdURI.URLEncode(MakeURL), FStreamSend, FStreamResult);
         mrDELETE:

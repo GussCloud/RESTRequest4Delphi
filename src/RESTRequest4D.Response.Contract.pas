@@ -20,12 +20,13 @@ type
     function StatusCode: Integer;
     function StatusText: string;
     function RawBytes: TBytes;
+    function Headers: TStrings;
+    function GetCookie(const ACookieName: string): string;
   {$IFDEF FPC}
     function JSONValue: TJSONData;
   {$ELSE}
     function JSONValue: TJSONValue;
   {$ENDIF}
-    function Headers: TStrings;
   end;
 
 implementation
